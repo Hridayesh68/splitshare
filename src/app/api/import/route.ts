@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
       status: importLog.status,
       anomalies: savedAnomalies,
       totalRowsParsed: rawRows.length,
+      rows: rawRows,
     });
   } catch (error: any) {
     console.error('CSV Import error:', error);

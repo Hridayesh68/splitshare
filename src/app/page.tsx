@@ -337,40 +337,26 @@ export default function Home() {
         setAnomalies(data.anomalies);
         setIsImportComplete(false);
 
-        // Read file contents locally for staging preview and adjustments
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const text = event.target?.result as string;
-          // Simple local parsing to bind with anomalies
-          const lines = text.split(/\r?\n/);
-          const parsedLines = [];
-          const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-          for (let i = 1; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (!line) continue;
-            const values = line.split(',');
-            const rowData: Record<string, string> = {};
-            headers.forEach((h, idx) => {
-              rowData[h] = values[idx] || '';
-            });
-            parsedLines.push({
-              index: i + 1,
-              ...rowData,
-            });
-          }
-          setCsvPreviewRows(parsedLines);
+        // Use server-parsed rows to avoid formatting/delimiter issues
+        const normalizedRows = (data.rows || []).map((row: any) => ({
+          ...row,
+          // Support lowercase names expected by handleResolveAndSubmit
+          paidby: row.paidBy,
+          sharedwith: row.sharedWith,
+          splittype: row.splitType,
+          splitdetails: row.splitDetails,
+        }));
+        setCsvPreviewRows(normalizedRows);
 
-          // Initialise default resolutions map
-          const initResolutions: Record<string, { action: string; param?: string }> = {};
-          data.anomalies.forEach((a: Anomaly) => {
-            // Pick default policy
-            const defaultPolicy = a.resolutionPolicy?.split('|')[0] || 'RESOLVE';
-            const defaultParam = a.resolutionPolicy?.split('|')[1] || '';
-            initResolutions[a.id] = { action: defaultPolicy, param: defaultParam };
-          });
-          setResolutionsMap(initResolutions);
-        };
-        reader.readAsText(csvFile);
+        // Initialise default resolutions map
+        const initResolutions: Record<string, { action: string; param?: string }> = {};
+        data.anomalies.forEach((a: Anomaly) => {
+          // Pick default policy
+          const defaultPolicy = a.resolutionPolicy?.split('|')[0] || 'RESOLVE';
+          const defaultParam = a.resolutionPolicy?.split('|')[1] || '';
+          initResolutions[a.id] = { action: defaultPolicy, param: defaultParam };
+        });
+        setResolutionsMap(initResolutions);
       } else {
         alert(data.error || 'Failed to process CSV file');
       }
