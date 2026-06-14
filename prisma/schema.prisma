@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                  String            @id @default(uuid())
+  name                String
+  email               String            @unique
+  passwordHash        String
+  memberships         GroupMembership[]
+  paidExpenses        Expense[]         @relation("PaidExpenses")
+  splits              ExpenseSplit[]
+  sentSettlements     Settlement[]      @relation("SentSettlements")
+  receivedSettlements Settlement[]      @relation("ReceivedSettlements")
+}
+
+model Group {
+  id          String            @id @default(uuid())
+  name        String
+  createdAt   DateTime          @default(now())
+  memberships GroupMembership[]
+  expenses    Expense[]
+  settlements Settlement[]
+}
+
+model GroupMembership {
+  id       String    @id @default(uuid())
+  groupId  String
+  userId   String
+  joinedAt DateTime
+  leftAt   DateTime?
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId, joinedAt])
+}
+
+model Expense {
+  id           String   @id @default(uuid())
+  groupId      String
+  description  String
+  amount       Float
+  currency     String   @default("INR") // "INR" or "USD"
+  exchangeRate Float    @default(1.0)
+  paidById     String
+  date         DateTime
+  createdAt    DateTime @default(now())
+  splitType    String   @default("EQUAL") // "EQUAL", "EXACT", "PERCENTAGE"
+
+  group  Group          @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  paidBy User           @relation("PaidExpenses", fields: [paidById], references: [id], onDelete: Cascade)
+  splits ExpenseSplit[]
+}
+
+model ExpenseSplit {
+  id        String @id @default(uuid())
+  expenseId String
+  userId    String
+  amount    Float
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([expenseId, userId])
+}
+
+model Settlement {
+  id       String   @id @default(uuid())
+  groupId  String
+  payerId  String
+  payeeId  String
+  amount   Float
+  currency String   @default("INR")
+  date     DateTime
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  payer User  @relation("SentSettlements", fields: [payerId], references: [id], onDelete: Cascade)
+  payee User  @relation("ReceivedSettlements", fields: [payeeId], references: [id], onDelete: Cascade)
+}
+
+model ImportLog {
+  id         String    @id @default(uuid())
+  fileName   String
+  importedAt DateTime  @default(now())
+  status     String    @default("PENDING") // "PENDING", "COMPLETED", "FAILED"
+  anomalies  Anomaly[]
+}
+
+model Anomaly {
+  id               String   @id @default(uuid())
+  importLogId      String
+  rowNumber        Int
+  columnName       String?
+  rawValue         String?
+  errorType        String // e.g. "DUPLICATE", "NEGATIVE_AMOUNT", "INVALID_DATE", "MEMBERSHIP_MISMATCH"
+  description      String
+  resolutionPolicy String? // e.g. "APPROVED_DELETE", "AUTO_CORRECT_ABS", "EXCLUDE_USER"
+  status           String   @default("PENDING") // "PENDING", "APPROVED", "IGNORED", "RESOLVED"
+  createdAt        DateTime @default(now())
+
+  importLog ImportLog @relation(fields: [importLogId], references: [id], onDelete: Cascade)
+}
