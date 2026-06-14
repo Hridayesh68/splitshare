@@ -508,7 +508,10 @@ export default function Home() {
         // Resolve split list
         let splitUserNames: string[] = [];
         if (row.sharedwith) {
-          splitUserNames = row.sharedwith.split(';').map((n: string) => n.trim().toLowerCase());
+          splitUserNames = row.sharedwith.split(';').map((n: string) => {
+            const parts = n.split(':');
+            return parts[0].trim().toLowerCase();
+          });
         } else {
           // If blank, default split to all active members
           splitUserNames = activeMembers.map(u => u.name.toLowerCase());
@@ -523,7 +526,103 @@ export default function Home() {
 
         if (finalSplitUsers.length === 0) continue; // Skip if no split members
 
-        const shareAmount = parseFloat((baseAmount / finalSplitUsers.length).toFixed(2));
+        let finalSplits: { userId: string; amount: number }[] = [];
+        let resolvedSplitType = 'EQUAL';
+
+        if (row.splittype && row.splittype.toUpperCase() === 'PERCENTAGE') {
+          // Check if we should redistribute equally
+          const hasRedistributeResolution = rowAnomalies.some(
+            a => a.errorType === 'SPLIT_SHARE_MISMATCH' && resolutionsMap[a.id]?.action === 'REDISTRIBUTE_EQUAL_PERCENTAGE'
+          );
+
+          if (hasRedistributeResolution) {
+            resolvedSplitType = 'EQUAL';
+            let runningTotal = 0;
+            finalSplits = finalSplitUsers.map((u, idx) => {
+              let userShare = 0;
+              if (idx === finalSplitUsers.length - 1) {
+                userShare = parseFloat((baseAmount - runningTotal).toFixed(2));
+              } else {
+                userShare = parseFloat((baseAmount / finalSplitUsers.length).toFixed(2));
+                runningTotal += userShare;
+              }
+              return {
+                userId: u.id,
+                amount: userShare,
+              };
+            });
+          } else {
+            resolvedSplitType = 'PERCENTAGE';
+            const pctMap = new Map<string, number>();
+            if (row.sharedwith) {
+              row.sharedwith.split(';').forEach((part: string) => {
+                const parts = part.split(':');
+                if (parts.length === 2) {
+                  const name = parts[0].trim().toLowerCase();
+                  const pct = parseFloat(parts[1]);
+                  if (!isNaN(pct)) {
+                    pctMap.set(name, pct);
+                  }
+                }
+              });
+            }
+
+            let totalPct = 0;
+            finalSplitUsers.forEach(u => {
+              totalPct += pctMap.get(u.name.toLowerCase()) || 0;
+            });
+
+            if (totalPct === 0) {
+              resolvedSplitType = 'EQUAL';
+              let runningTotal = 0;
+              finalSplits = finalSplitUsers.map((u, idx) => {
+                let userShare = 0;
+                if (idx === finalSplitUsers.length - 1) {
+                  userShare = parseFloat((baseAmount - runningTotal).toFixed(2));
+                } else {
+                  userShare = parseFloat((baseAmount / finalSplitUsers.length).toFixed(2));
+                  runningTotal += userShare;
+                }
+                return {
+                  userId: u.id,
+                  amount: userShare,
+                };
+              });
+            } else {
+              let runningTotal = 0;
+              finalSplits = finalSplitUsers.map((u, idx) => {
+                const pct = pctMap.get(u.name.toLowerCase()) || 0;
+                let userShare = 0;
+                if (idx === finalSplitUsers.length - 1) {
+                  userShare = parseFloat((baseAmount - runningTotal).toFixed(2));
+                } else {
+                  userShare = parseFloat(((pct / totalPct) * baseAmount).toFixed(2));
+                  runningTotal += userShare;
+                }
+                return {
+                  userId: u.id,
+                  amount: userShare,
+                };
+              });
+            }
+          }
+        } else {
+          resolvedSplitType = 'EQUAL';
+          let runningTotal = 0;
+          finalSplits = finalSplitUsers.map((u, idx) => {
+            let userShare = 0;
+            if (idx === finalSplitUsers.length - 1) {
+              userShare = parseFloat((baseAmount - runningTotal).toFixed(2));
+            } else {
+              userShare = parseFloat((baseAmount / finalSplitUsers.length).toFixed(2));
+              runningTotal += userShare;
+            }
+            return {
+              userId: u.id,
+              amount: userShare,
+            };
+          });
+        }
 
         processedRows.push({
           rowNumber: rowNum,
@@ -533,11 +632,8 @@ export default function Home() {
           currency: currencyStr,
           exchangeRate: rate,
           paidById: payerUser.id,
-          splitType: 'EQUAL',
-          splits: finalSplitUsers.map(u => ({
-            userId: u.id,
-            amount: shareAmount,
-          })),
+          splitType: resolvedSplitType,
+          splits: finalSplits,
         });
       }
     }

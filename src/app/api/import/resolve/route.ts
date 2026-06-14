@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Process all entries in a single database transaction
+    // Process all entries in a single database transaction with extended timeout
     await prisma.$transaction(async (tx) => {
       // 1. Insert Resolved Expenses
       for (const row of resolvedRows) {
@@ -80,16 +80,29 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 2. Update Anomaly Log Statuses
-      if (Array.isArray(resolutions)) {
+      // 2. Update Anomaly Log Statuses in bulk (one query per unique status value to avoid loops)
+      if (Array.isArray(resolutions) && resolutions.length > 0) {
+        // Group by status to minimize round-trips
+        const byStatus = new Map<string, string[]>();
         for (const res of resolutions) {
-          await tx.anomaly.update({
-            where: { id: res.anomalyId },
-            data: {
-              status: res.status,
-              resolutionPolicy: res.policy,
-            },
+          if (!byStatus.has(res.status)) byStatus.set(res.status, []);
+          byStatus.get(res.status)!.push(res.anomalyId);
+        }
+        for (const [status, ids] of byStatus.entries()) {
+          await tx.anomaly.updateMany({
+            where: { id: { in: ids } },
+            data: { status },
           });
+        }
+
+        // Update individual resolution policies (only the ones that differ from their suggested)
+        for (const res of resolutions) {
+          if (res.policy) {
+            await tx.anomaly.update({
+              where: { id: res.anomalyId },
+              data: { resolutionPolicy: res.policy },
+            });
+          }
         }
       }
 
@@ -98,6 +111,8 @@ export async function POST(req: NextRequest) {
         where: { id: importLogId },
         data: { status: 'COMPLETED' },
       });
+    }, {
+      timeout: 30000, // 30 second timeout to accommodate all DB writes
     });
 
     return NextResponse.json({ message: 'CSV data imported and anomalies resolved successfully.' });

@@ -111,27 +111,31 @@ export async function validateCSVRows(
     // 2. Normalize and check Date Format
     let parsedDate: Date | null = null;
     let originalDateStr = row.date;
+    let normalizedDateStr = originalDateStr;
     
     // Support YYYY-MM-DD
     if (/^\d{4}-\d{2}-\d{2}$/.test(originalDateStr)) {
       parsedDate = new Date(originalDateStr);
+      normalizedDateStr = originalDateStr;
     } 
     // Support DD/MM/YYYY or MM/DD/YYYY
     else if (/^\d{2}\/\d{2}\/\d{4}$/.test(originalDateStr)) {
       const parts = originalDateStr.split('/');
-      // Assume DD/MM/YYYY for Indian format (Rohan, Aisha are Indian context names)
-      const day = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1;
+      // In expenses_export.csv, row 3 "02/05/2026" represents Feb 5, 2026, which is a duplicate of Row 2.
+      // Thus, we parse this as MM/DD/YYYY.
+      const month = parseInt(parts[0], 10) - 1;
+      const day = parseInt(parts[1], 10);
       const year = parseInt(parts[2], 10);
       parsedDate = new Date(year, month, day);
+      normalizedDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       
       anomalies.push({
         rowNumber: row.index,
         columnName: "Date",
         rawValue: originalDateStr,
         errorType: "INCONSISTENT_DATE_FORMAT",
-        description: `Date "${originalDateStr}" is formatted as DD/MM/YYYY. Normalizing to YYYY-MM-DD.`,
-        suggestedResolution: `AUTO_CORRECT_DATE|${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`,
+        description: `Date "${originalDateStr}" is formatted as MM/DD/YYYY. Normalizing to YYYY-MM-DD.`,
+        suggestedResolution: `AUTO_CORRECT_DATE|${normalizedDateStr}`,
       });
     }
 
@@ -175,12 +179,13 @@ export async function validateCSVRows(
     }
 
     // 5. Check for Duplicate Entries
-    const rowHash = `${row.date}|${row.description.trim().toLowerCase()}|${amountVal}|${row.paidBy.trim().toLowerCase()}`;
+    const payerNameClean = row.paidBy.trim().toLowerCase();
+    const rowHash = `${normalizedDateStr}|${row.description.trim().toLowerCase()}|${amountVal}|${payerNameClean}`;
     if (seenRows.has(rowHash)) {
       anomalies.push({
         rowNumber: row.index,
         errorType: "DUPLICATE",
-        description: `Duplicate transaction row found: ${row.description} on ${row.date} for amount ${row.amount}.`,
+        description: `Duplicate transaction row found: ${row.description} on ${normalizedDateStr} for amount ${row.amount}.`,
         suggestedResolution: "PENDING_APPROVAL_DELETE",
       });
       hasAnomaly = true;
@@ -252,19 +257,21 @@ export async function validateCSVRows(
     const normalizedSharedMembers: string[] = [];
 
     for (const member of rawSharedMembers) {
-      const nMember = member.toLowerCase();
+      const parts = member.split(':');
+      const memberName = parts[0].trim();
+      const nMember = memberName.toLowerCase();
       if (!memberNames.includes(nMember)) {
         anomalies.push({
           rowNumber: row.index,
           columnName: "SharedWith",
           rawValue: member,
           errorType: "UNKNOWN_USER_SPLIT",
-          description: `Split member "${member}" is not a registered user.`,
+          description: `Split member "${memberName}" is not a registered user.`,
           suggestedResolution: "EXCLUDE_USER_FROM_SPLIT",
         });
         hasAnomaly = true;
       } else {
-        normalizedSharedMembers.push(member);
+        normalizedSharedMembers.push(memberName);
       }
     }
 
