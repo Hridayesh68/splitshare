@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
 
     if (splitType === 'EQUAL') {
       const share = convertedAmount / activeMemberships.length;
-      splitsToCreate = activeMemberships.map(m => ({
+      splitsToCreate = activeMemberships.map((m: any) => ({
         userId: m.userId,
         amount: parseFloat(share.toFixed(2)),
       }));
