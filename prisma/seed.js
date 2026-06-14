@@ -29,25 +29,24 @@ async function main() {
   await prisma.user.deleteMany();
 
   console.log('Seeding users...');
-  const hashedPassword = hashPassword('password123');
 
   const aisha = await prisma.user.create({
-    data: { name: 'Aisha', email: 'aisha@splitshare.com', passwordHash: hashedPassword },
+    data: { name: 'Aisha', email: 'aisha@splitshare.com', passwordHash: hashPassword('aisha') },
   });
   const rohan = await prisma.user.create({
-    data: { name: 'Rohan', email: 'rohan@splitshare.com', passwordHash: hashedPassword },
+    data: { name: 'Rohan', email: 'rohan@splitshare.com', passwordHash: hashPassword('rohan') },
   });
   const priya = await prisma.user.create({
-    data: { name: 'Priya', email: 'priya@splitshare.com', passwordHash: hashedPassword },
+    data: { name: 'Priya', email: 'priya@splitshare.com', passwordHash: hashPassword('priya') },
   });
   const meera = await prisma.user.create({
-    data: { name: 'Meera', email: 'meera@splitshare.com', passwordHash: hashedPassword },
+    data: { name: 'Meera', email: 'meera@splitshare.com', passwordHash: hashPassword('meera') },
   });
   const dev = await prisma.user.create({
-    data: { name: 'Dev', email: 'dev@splitshare.com', passwordHash: hashedPassword },
+    data: { name: 'Dev', email: 'dev@splitshare.com', passwordHash: hashPassword('dev') },
   });
   const sam = await prisma.user.create({
-    data: { name: 'Sam', email: 'sam@splitshare.com', passwordHash: hashedPassword },
+    data: { name: 'Sam', email: 'sam@splitshare.com', passwordHash: hashPassword('sam') },
   });
 
   console.log('Seeding groups...');

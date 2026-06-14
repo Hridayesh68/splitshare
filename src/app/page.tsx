@@ -119,15 +119,32 @@ export default function Home() {
   const [usdRate, setUsdRate] = useState<number>(83.0); // Priya's Conversion rate parameter
   const [resolutionsMap, setResolutionsMap] = useState<Record<string, { action: string; param?: string }>>({});
 
+  // Login Form states
+  const [usernameInput, setUsernameInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
   // 1. Initial Load
   useEffect(() => {
-    // Check local storage for logged-in user
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-      setCurrentUser(JSON.parse(savedUser));
-    }
+    // Check session against secure cookie on load
+    const checkSession = async () => {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+          const data = await res.json();
+          setCurrentUser(data.user);
+          localStorage.setItem('currentUser', JSON.stringify(data.user));
+        } else {
+          setCurrentUser(null);
+          localStorage.removeItem('currentUser');
+        }
+      } catch (err) {
+        console.error('Failed to verify session:', err);
+      }
+    };
 
-    // Load groups and summary
+    checkSession();
     fetchGroupsAndUsers();
   }, []);
 
@@ -181,12 +198,55 @@ export default function Home() {
     }
   };
 
-  const handleLogin = (user: User) => {
-    setCurrentUser(user);
-    localStorage.setItem('currentUser', JSON.stringify(user));
+  const performLogin = async (usr: string, pass: string) => {
+    setLoginError('');
+    setIsLoggingIn(true);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: usr, password: pass }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setCurrentUser(data.user);
+        localStorage.setItem('currentUser', JSON.stringify(data.user));
+        setUsernameInput('');
+        setPasswordInput('');
+      } else {
+        setLoginError(data.error || 'Invalid credentials');
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      setLoginError('An error occurred during login');
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
-  const handleLogout = () => {
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!usernameInput || !passwordInput) {
+      setLoginError('Username/Email and Password are required');
+      return;
+    }
+    performLogin(usernameInput, passwordInput);
+  };
+
+  const handleQuickLogin = (name: string) => {
+    const lowercaseName = name.toLowerCase();
+    setUsernameInput(lowercaseName);
+    setPasswordInput(lowercaseName);
+    performLogin(lowercaseName, lowercaseName);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
     setCurrentUser(null);
     localStorage.removeItem('currentUser');
   };
@@ -511,34 +571,82 @@ export default function Home() {
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-gradient-to-tr from-violet-950 via-zinc-900 to-indigo-950 flex flex-col justify-center items-center p-6 text-zinc-50">
-        <div className="bg-zinc-900/60 backdrop-blur-lg border border-zinc-800 p-8 rounded-2xl max-w-md w-full shadow-2xl text-center">
-          <div className="mb-6 flex justify-center">
-            <div className="w-16 h-16 bg-gradient-to-r from-violet-500 to-indigo-500 rounded-2xl flex items-center justify-center font-bold text-2xl tracking-wide shadow-lg">
+        <div className="bg-zinc-900/60 backdrop-blur-lg border border-zinc-800 p-8 rounded-2xl max-w-md w-full shadow-2xl">
+          <div className="mb-6 flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-gradient-to-r from-violet-500 to-indigo-500 rounded-2xl flex items-center justify-center font-bold text-2xl tracking-wide shadow-lg mb-4 animate-pulse">
               S
             </div>
+            <h1 className="text-3xl font-extrabold tracking-tight mb-1 bg-gradient-to-r from-violet-400 to-indigo-300 bg-clip-text text-transparent">
+              SplitShare
+            </h1>
+            <p className="text-zinc-400 text-sm">
+              Roommate Expense Splitter & Anomaly Importer
+            </p>
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight mb-2 bg-gradient-to-r from-violet-400 to-indigo-300 bg-clip-text text-transparent">
-            SplitShare
-          </h1>
-          <p className="text-zinc-400 text-sm mb-8">
-            Roommate Expense Splitter & Anomaly Importer
-          </p>
 
-          <h3 className="text-lg font-semibold mb-4 text-left">Log in as a Flatmate</h3>
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            {['Aisha', 'Rohan', 'Priya', 'Meera', 'Dev', 'Sam'].map(name => {
-              const u = users.find(u => u.name.toLowerCase() === name.toLowerCase());
-              const defaultEmail = `${name.toLowerCase()}@splitshare.com`;
-              return (
-                <button
-                  key={name}
-                  onClick={() => handleLogin(u || { id: name, name, email: defaultEmail })}
-                  className="bg-zinc-800/50 hover:bg-violet-600/40 border border-zinc-700/60 hover:border-violet-500 py-3 px-4 rounded-xl font-medium text-sm transition-all duration-200"
-                >
-                  {name}
-                </button>
-              );
-            })}
+          {loginError && (
+            <div className="mb-4 p-3 bg-red-950/40 border border-red-900/50 text-red-200 text-xs font-semibold rounded-xl text-center">
+              {loginError}
+            </div>
+          )}
+
+          <form onSubmit={handleFormSubmit} className="space-y-4 mb-6">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5" htmlFor="username">
+                Username or Email
+              </label>
+              <input
+                id="username"
+                type="text"
+                placeholder="Enter email or roommate name"
+                value={usernameInput}
+                onChange={(e) => setUsernameInput(e.target.value)}
+                className="w-full bg-zinc-950/80 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-650 focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500 transition-all duration-200"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5" htmlFor="password">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                className="w-full bg-zinc-950/80 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-650 focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500 transition-all duration-200"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoggingIn}
+              className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-50 text-white py-3 px-4 rounded-xl font-bold text-sm tracking-wide shadow-lg hover:shadow-violet-500/20 active:scale-[0.98] transition-all duration-200 mt-2 cursor-pointer"
+            >
+              {isLoggingIn ? 'Signing In...' : 'Sign In'}
+            </button>
+          </form>
+
+          <div className="relative my-6 flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-zinc-800/60"></div>
+            </div>
+            <span className="relative bg-zinc-900/90 px-3 text-xs text-zinc-400 font-medium rounded-full">
+              Log in as a Flatmate
+            </span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            {['Aisha', 'Rohan', 'Priya', 'Meera', 'Dev', 'Sam'].map(name => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => handleQuickLogin(name)}
+                className="bg-zinc-850/50 hover:bg-violet-600/35 border border-zinc-700/65 hover:border-violet-500/70 py-2 px-1 rounded-xl text-xs font-semibold text-zinc-200 hover:text-white transition-all duration-200 cursor-pointer text-center"
+              >
+                {name}
+              </button>
+            ))}
           </div>
         </div>
       </div>
